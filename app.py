@@ -5,16 +5,38 @@ import random
 
 # Mock LLM calls to keep the code runnable out-of-the-box.
 # Replace these with actual wrapper calls (e.g., openai.chat.completions) in production.
+#def mock_llm_extract_entities(text):
+ #   time.sleep(1.5) # Simulate processing
+ #   return {
+  #      "vehicle_make": "Toyota",
+  #      "vehicle_model": "Camry",
+  #      "damage_severity": "Moderate",
+  #      "impact_type": "Rear-end collision",
+  #      "damaged_parts": ["rear bumper", "tail light"]
+   # }
 def mock_llm_extract_entities(text):
-    time.sleep(1.5) # Simulate processing
-    return {
-        "vehicle_make": "Toyota",
-        "vehicle_model": "Camry",
-        "damage_severity": "Moderate",
-        "impact_type": "Rear-end collision",
-        "damaged_parts": ["rear bumper", "tail light"]
-    }
-
+    text_lower = text.lower()
+    
+    # Dynamic Mocking based on your text input keywords
+    if "tesla" in text_lower:
+        return {
+            "vehicle_make": "Tesla", "vehicle_model": "Model 3",
+            "damage_severity": "Severe", "impact_type": "Multi-car collision",
+            "damaged_parts": ["front bumper", "rear bumper"]
+        }
+    elif "ford" in text_lower or "f-150" in text_lower:
+        return {
+            "vehicle_make": "Ford", "vehicle_model": "F-150",
+            "damage_severity": "Moderate", "impact_type": "Weather damage",
+            "damaged_parts": ["windshield"]
+        }
+    else:
+        # Fallback default
+        return {
+            "vehicle_make": "Toyota", "vehicle_model": "Camry",
+            "damage_severity": "Moderate", "impact_type": "Rear-end collision",
+            "damaged_parts": ["rear bumper", "tail light"]
+        }
 def mock_llm_calculate_settlement(base_estimate, deductible):
     time.sleep(1.2)
     final_payout = max(0, base_estimate - deductible)
