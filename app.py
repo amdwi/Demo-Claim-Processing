@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import json
+import pandas as pd
 
 # -------------------------------------------------------------------
 # Smart Mock LLM Engine (Handles all 14 test cases dynamically)
@@ -17,7 +18,6 @@ def mock_llm_extract_entities(text):
             "damaged_parts": ["carbon-fiber front bumper", "matrix led headlight"]
         }
     elif "tesla" in text_lower and ("front" in text_lower and "rear" in text_lower):
-        # Original chain-reaction multi-bumper case
         return {
             "vehicle_make": "Tesla", "vehicle_model": "Model 3",
             "damage_severity": "Severe", "impact_type": "Multi-car highway pileup",
@@ -80,14 +80,12 @@ def mock_llm_extract_entities(text):
             "damaged_parts": ["driver-side front window"]
         }
     elif "tesla" in text_lower:
-        # Fallback single-impact standard Tesla case
         return {
             "vehicle_make": "Tesla", "vehicle_model": "Model 3",
             "damage_severity": "Moderate", "impact_type": "Rear-end collision",
             "damaged_parts": ["rear bumper"]
         }
     else:
-        # The original baseline default (Toyota Camry scenario)
         return {
             "vehicle_make": "Toyota", "vehicle_model": "Camry",
             "damage_severity": "Moderate", "impact_type": "Rear-end collision",
@@ -140,16 +138,29 @@ class DamageAssessmentAgent:
             part_lower = part.lower()
             if part_lower in self.kb_vector_db:
                 metrics = self.kb_vector_db[part_lower]
-                cost = metrics["part_cost"] + (metrics["labor_hours"] * metrics["rate_per_hour"])
+                labor_cost = metrics["labor_hours"] * metrics["rate_per_hour"]
+                part_cost = metrics["part_cost"]
+                cost = part_cost + labor_cost
                 total_estimate += cost
+                
                 breakdown.append({
-                    "part": part,
-                    "cost_estimate": cost,
-                    "details": f"Parts: ${metrics['part_cost']}, Labor: {metrics['labor_hours']} hrs"
+                    "Damaged Component": part.title(),
+                    "Labor Hours": metrics["labor_hours"],
+                    "Labor Rate ($/hr)": f"${metrics['rate_per_hour']}",
+                    "Total Labor Cost": labor_cost,
+                    "Replacement Part Cost": part_cost,
+                    "Total Component Cost": cost
                 })
             else:
                 total_estimate += 500
-                breakdown.append({"part": part, "cost_estimate": 500, "details": "Standard benchmark lookup applied"})
+                breakdown.append({
+                    "Damaged Component": part.title(),
+                    "Labor Hours": 2,
+                    "Labor Rate ($/hr)": "$100",
+                    "Total Labor Cost": 200,
+                    "Replacement Part Cost": 300,
+                    "Total Component Cost": 500
+                })
                 
         return {"total_base_estimate": total_estimate, "breakdown": breakdown}
 
@@ -177,19 +188,23 @@ class CentralManager:
         self.settlement_agent = SettlementCalculationAgent()
         
     def run_workflow(self, raw_report: str, deductible: float, status_container):
-        # Step 1
+        # Step 1: FNOL
         status_container.info("🔄 **[Manager]** Parsing unstructured narrative data via **FNOL Intake Agent**...")
         fnol_results = self.fnol_agent.process(raw_report)
         status_container.success("✅ **[FNOL Intake Agent Completed]** Operational data structures isolated.")
         st.json(fnol_results)
         
-        # Step 2
+        # Step 2: Damage RAG Assessment Table
         status_container.info("🔄 **[Manager]** Querying policy vector space via **Damage Assessment Agent**...")
         damage_results = self.damage_agent.process(fnol_results)
-        status_container.success("✅ **[Damage Assessment Agent Completed]** Parts & labor indices calculated.")
-        st.write(damage_results)
+        status_container.success("✅ **[Damage Assessment Agent Completed]** Reference standard benchmarks matched.")
         
-        # Step 3
+        # Displaying data as a clean auditing table instead of JSON
+        st.markdown("### 📋 RAG Database Itemized Calculation Table")
+        df = pd.DataFrame(damage_results["breakdown"])
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Step 3: Settlement Calculations
         status_container.info("🔄 **[Manager]** Running policy rules via **Settlement Agent**...")
         settlement_results = self.settlement_agent.process(damage_results, deductible)
         status_container.success("✅ **[Settlement Calculation Agent Completed]** Account balances updated.")
@@ -213,16 +228,14 @@ approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_val
 with st.expander("💡 Click here to copy test inputs (Auto-Approve vs Human Review cases)"):
     st.markdown("""
     **Auto-Approve Cases (Low to Moderate Claims):**
-    * `I was waiting at a red light when a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered.` *(Original Baseline)*
+    * `I was waiting at a red light when a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered.`
     * `Struck a deer with my 2021 Honda Accord, crushing the front bumper and cracking the front grille.`
     * `A heavy tree branch fell onto my 2023 Ford F-150, shattering the windshield and denting the hood.`
-    * `Backed my 2020 Chevrolet Equinox into a brick mailbox, leaving a deep dent on the rear bumper.`
     
     **Human Review Cases (High Value / Anomalies / Structural Damage):**
-    * `Got caught in a pileup in my 2022 Tesla Model 3, completely destroying both the front bumper and the rear bumper.` *(Original Tesla Case)*
+    * `Got caught in a pileup in my 2022 Tesla Model 3, completely destroying both the front bumper and the rear bumper.`
     * `A shopping cart dented the carbon-fiber front bumper and smashed the matrix LED headlight on my 2024 Porsche 911.`
     * `Hit an SUV head-on in my 2021 Jeep Wrangler, crushing the front bumper and bending the main structural frame rails.`
-    * `My 2022 Ford F-150 was submerged in a flash flood, shorting out the electrical dashboard and ruining the interior engine components.`
     """)
 
 st.subheader("1. Enter Accident Claims Text")
@@ -244,7 +257,7 @@ if st.button("Execute Pipeline", type="primary"):
     st.subheader("3. Final Settlement Verdict")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric(label="Base Repair Estimate", value=f"${final_output['base_estimate']}")
+    col1.metric(label="Base Repair Estimate (Sum of Table)", value=f"${final_output['base_estimate']}")
     col2.metric(label="Deductible Deducted", value=f"-${final_output['deductible_applied']}")
     col3.metric(label="Net Calculated Payout", value=f"${final_output['final_payout']}")
     
