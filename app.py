@@ -216,7 +216,7 @@ class CentralManager:
 # -------------------------------------------------------------------
 st.set_page_config(page_title="Agentic Claims Processing", page_icon="🤖", layout="wide")
 
-st.title("🤖 Multi-Agent Insurance Claims Processor")
+st.title("🤖 Multi-Agent Insurance Claims Processing ")
 st.markdown("Centralized Manager workflow delegating tracking metrics dynamically across 3 separate software agents.")
 
 # Sidebar Adjustments
