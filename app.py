@@ -228,7 +228,7 @@ approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_val
 with st.expander("💡 Click here to copy test inputs (Auto-Approve vs Human Review cases)"):
     st.markdown("""
     **Auto-Approve Cases (Low to Moderate Claims):**
-    * `I was waiting at a red light when a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered.`
+    * `A delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is shattered.`
     * `Struck a deer with my 2021 Honda Accord, crushing the front bumper and cracking the front grille.`
     * `A heavy tree branch fell onto my 2023 Ford F-150, shattering the windshield and denting the hood.`
     
