@@ -1,38 +1,16 @@
-To add visual intuition to the agent outputs, we can use Streamlit's native `st.bar_chart` to show the component cost breakdown (Agent 2) and `st.plotly_chart` to render a financial Waterfall Chart (Agent 3).
-
-To keep the application highly performant and lightweight without heavy external compilation dependencies, we will use **Plotly** (which comes pre-compiled and works seamlessly on Streamlit Cloud) to build the interactive waterfall chart.
-
-### Updated `requirements.txt`
-
-Make sure your repository's dependency file includes Plotly:
-
-```text
-streamlit>=1.35.0
-Pillow>=10.0.0
-pandas
-plotly
-
-```
-
----
-
-### Complete Updated `app.py` with Interactive Charts
-
-```python
 import streamlit as st
 import time
 import json
 import pandas as pd
-import plotly.graph_objects as go
 
 # -------------------------------------------------------------------
 # Smart Mock LLM Engine (Handles all 14 test cases dynamically)
 # -------------------------------------------------------------------
 def mock_llm_extract_entities(text):
-    time.sleep(1.2) 
+    time.sleep(1.2) # Simulate processing time
     text_lower = text.lower()
     
-    # --- HUMAN REVIEW & SEVERE CASES ---
+    # --- HUMAN REVIEW & SEVERE CASES (High Valuation) ---
     if "porsche" in text_lower or "911" in text_lower:
         return {
             "vehicle_make": "Porsche", "vehicle_model": "911 Carrera",
@@ -64,7 +42,7 @@ def mock_llm_extract_entities(text):
             "damaged_parts": ["front bumper", "front door", "rear door", "rear bumper"]
         }
         
-    # --- STANDARD AUTO-APPROVED CASES ---
+    # --- STANDARD AUTO-APPROVED CASES (Low to Moderate Valuation) ---
     elif "accord" in text_lower or "deer" in text_lower:
         return {
             "vehicle_make": "Honda", "vehicle_model": "Accord",
@@ -126,12 +104,16 @@ class FNOLIntakeAgent:
 # -------------------------------------------------------------------
 class DamageAssessmentAgent:
     def __init__(self):
+        # Comprehensive Benchmark Knowledge Base representing Vector DB Lookups
         self.kb_vector_db = {
+            # Luxury & Structural High-tier elements
             "carbon-fiber front bumper": {"labor_hours": 8, "part_cost": 2800, "rate_per_hour": 150},
             "matrix led headlight": {"labor_hours": 3, "part_cost": 3200, "rate_per_hour": 150},
             "structural frame rails": {"labor_hours": 25, "part_cost": 1800, "rate_per_hour": 120},
             "electrical dashboard": {"labor_hours": 15, "part_cost": 2500, "rate_per_hour": 110},
             "engine components": {"labor_hours": 20, "part_cost": 4500, "rate_per_hour": 110},
+            
+            # Standard/Mid-tier elements
             "rear bumper": {"labor_hours": 4, "part_cost": 450, "rate_per_hour": 100},
             "tail light": {"labor_hours": 1, "part_cost": 150, "rate_per_hour": 100},
             "front bumper": {"labor_hours": 5, "part_cost": 600, "rate_per_hour": 100},
@@ -163,17 +145,21 @@ class DamageAssessmentAgent:
                 
                 breakdown.append({
                     "Damaged Component": part.title(),
-                    "Labor Cost": labor_cost,
-                    "Part Cost": part_cost,
-                    "Total Cost": cost
+                    "Labor Hours": metrics["labor_hours"],
+                    "Labor Rate ($/hr)": f"${metrics['rate_per_hour']}",
+                    "Total Labor Cost": labor_cost,
+                    "Replacement Part Cost": part_cost,
+                    "Total Component Cost": cost
                 })
             else:
                 total_estimate += 500
                 breakdown.append({
                     "Damaged Component": part.title(),
-                    "Labor Cost": 200,
-                    "Part Cost": 300,
-                    "Total Cost": 500
+                    "Labor Hours": 2,
+                    "Labor Rate ($/hr)": "$100",
+                    "Total Labor Cost": 200,
+                    "Replacement Part Cost": 300,
+                    "Total Component Cost": 500
                 })
                 
         return {"total_base_estimate": total_estimate, "breakdown": breakdown}
@@ -202,33 +188,26 @@ class CentralManager:
         self.settlement_agent = SettlementCalculationAgent()
         
     def run_workflow(self, raw_report: str, deductible: float, status_container):
-        # Step 1: FNOL Intake
+        # Step 1: FNOL
         status_container.info("🔄 **[Manager]** Parsing unstructured narrative data via **FNOL Intake Agent**...")
         fnol_results = self.fnol_agent.process(raw_report)
         status_container.success("✅ **[FNOL Intake Agent Completed]** Operational data structures isolated.")
         st.json(fnol_results)
         
-        # Step 2: Damage Assessment (RAG & Bar Chart)
+        # Step 2: Damage RAG Assessment Table
         status_container.info("🔄 **[Manager]** Querying policy vector space via **Damage Assessment Agent**...")
         damage_results = self.damage_agent.process(fnol_results)
         status_container.success("✅ **[Damage Assessment Agent Completed]** Reference standard benchmarks matched.")
         
+        # Displaying data as a clean auditing table instead of JSON
+        st.markdown("### 📋 RAG Database Itemized Calculation Table")
         df = pd.DataFrame(damage_results["breakdown"])
-        
-        # UI Presentation: Dataframe & Bar Chart side by side
-        st.markdown("### 📋 Agent 2 Output: Cost Itemization & Chart")
-        col_tb, col_ch = st.columns([3, 2])
-        with col_tb:
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        with col_ch:
-            # Interactive Streamlit Bar Chart
-            chart_data = df.set_index("Damaged Component")[["Labor Cost", "Part Cost"]]
-            st.bar_chart(chart_data, stack=True)
+        st.dataframe(df, use_container_width=True, hide_index=True)
         
         # Step 3: Settlement Calculations
         status_container.info("🔄 **[Manager]** Running policy rules via **Settlement Agent**...")
         settlement_results = self.settlement_agent.process(damage_results, deductible)
-        status_container.success("✅ **[Settlement Calculation Agent Completed]** Financial analysis finished.")
+        status_container.success("✅ **[Settlement Calculation Agent Completed]** Account balances updated.")
         
         return settlement_results
 
@@ -245,15 +224,18 @@ st.sidebar.header("Workflow Control Panel")
 deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value=5000, value=500, step=100)
 approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_value=1000, max_value=10000, value=5000)
 
+# Quick Copy-Paste Examples expander
 with st.expander("💡 Click here to copy test inputs (Auto-Approve vs Human Review cases)"):
     st.markdown("""
-    **Auto-Approve Cases:**
+    **Auto-Approve Cases (Low to Moderate Claims):**
     * `I was waiting at a red light when a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered.`
     * `Struck a deer with my 2021 Honda Accord, crushing the front bumper and cracking the front grille.`
+    * `A heavy tree branch fell onto my 2023 Ford F-150, shattering the windshield and denting the hood.`
     
-    **Human Review Cases:**
+    **Human Review Cases (High Value / Anomalies / Structural Damage):**
     * `Got caught in a pileup in my 2022 Tesla Model 3, completely destroying both the front bumper and the rear bumper.`
     * `A shopping cart dented the carbon-fiber front bumper and smashed the matrix LED headlight on my 2024 Porsche 911.`
+    * `Hit an SUV head-on in my 2021 Jeep Wrangler, crushing the front bumper and bending the main structural frame rails.`
     """)
 
 st.subheader("1. Enter Accident Claims Text")
@@ -272,43 +254,15 @@ if st.button("Execute Pipeline", type="primary"):
     
     # Financial Analytics Dashboard section
     st.markdown("---")
-    st.subheader("3. Agent 3 Output: Final Settlement Verdict")
+    st.subheader("3. Final Settlement Verdict")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric(label="Base Repair Estimate", value=f"${final_output['base_estimate']}")
-    col2.metric(label="Deductible Applied", value=f"-${final_output['deductible_applied']}")
+    col1.metric(label="Base Repair Estimate (Sum of Table)", value=f"${final_output['base_estimate']}")
+    col2.metric(label="Deductible Deducted", value=f"-${final_output['deductible_applied']}")
     col3.metric(label="Net Calculated Payout", value=f"${final_output['final_payout']}")
-    
-    # --- Plotly Interactive Waterfall Chart ---
-    st.markdown("### 📊 Settlement Financial Waterfall Breakdown")
-    
-    fig = go.Figure(go.Waterfall(
-        name="Settlement",
-        orientation="v",
-        measure=["relative", "relative", "total"],
-        x=["Base Repair Estimate", "Deductible Applied", "Net Final Payout"],
-        textposition="outside",
-        text=[f"+${final_output['base_estimate']}", f"-${final_output['deductible_applied']}", f"${final_output['final_payout']}"],
-        y=[final_output['base_estimate'], -final_output['deductible_applied'], final_output['final_payout']],
-        connector={"line": {"color": "rgb(63, 63, 63)"}},
-        increasing={"marker": {"color": "#2ca02c"}},
-        decreasing={"marker": {"color": "#d62728"}},
-        totals={"marker": {"color": "#1f77b4"}}
-    ))
-    
-    fig.update_layout(
-        title="Financial Calculation Flow",
-        showlegend=False,
-        height=400,
-        margin=dict(l=20, r=20, t=40, b=20)
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
     
     # Conditional Escalation Alert Box Logic
     if final_output['final_payout'] > approval_threshold:
         st.error(f"⚠️ **Action Required (Human Review Escalation)**: Net payout of ${final_output['final_payout']} exceeds your configured threshold rule of ${approval_threshold}. Auto-approval suspended. Claim flagged and routed to a human adjuster.")
     else:
         st.success("✨ **Auto-Approved**: Calculated claim settlement is inside allowed automated guidelines. Submitting wire transfer.")
-
-```
