@@ -19,9 +19,8 @@ def mock_llm_extract_entities(text):
     
     # 2. Extract RAW, uncorrected vehicle descriptions based on simple text windows
     raw_vehicle = "Unknown Vehicle"
-    # Expanded keyword net to catch catastrophic typos like 'Tsla'
-vehicle_keywords = ["porsche", "porse", "porshe", "911", "tesla", "tesl", "tsla", "camry", "toyota", "ford", "f-150", "f150"]
-        for kw in vehicle_keywords:
+    vehicle_keywords = ["porsche", "porse", "porshe", "911", "tesla", "tesl", "camry", "toyota", "ford", "f-150", "f150"]
+    for kw in vehicle_keywords:
         if kw in text_lower:
             # Grab a window of text around the vehicle mention to capture context/typos
             start_idx = max(0, text_lower.find(kw) - 7)
