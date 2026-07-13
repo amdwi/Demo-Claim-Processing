@@ -44,16 +44,13 @@ class FNOLIntakeAgent:
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_schema=ClaimExtractionSchema, # Enforces strict schema compilation
+                    response_schema=ClaimExtractionSchema, 
                     temperature=0.1
                 ),
             )
-            
-            # Use SDK native parser instead of manual json.loads to bypass parsing exceptions
             extracted_data = response.parsed.model_dump()
             
         except Exception as e:
-            # Fallback strategy to protect pipeline execution state against API Client errors
             st.sidebar.error(f"⚠️ GenAI Client Error: {str(e)}. Utilizing fallback extraction parameters.")
             extracted_data = {
                 "policy_number": "POL-5544219",
@@ -70,19 +67,14 @@ class FNOLIntakeAgent:
 # -------------------------------------------------------------------
 class DamageAssessmentAgent:
     def __init__(self):
-        import chromadb
-        from chromadb.utils import embedding_functions
-        
         self.chroma_client = chromadb.Client()
         self.emb_fn = embedding_functions.DefaultEmbeddingFunction()
         
-        # Safe collection creation
         self.collection = self.chroma_client.get_or_create_collection(
             name="part_costs_catalog",
             embedding_function=self.emb_fn
         )
         
-        # If your database is empty, seed the initial catalog rules
         if self.collection.count() == 0:
             self.collection.add(
                 documents=["carbon-fiber front bumper", "matrix led headlight", "rear bumper", "tail light", "front bumper"],
@@ -139,4 +131,127 @@ class DamageAssessmentAgent:
 class SettlementCalculationAgent:
     def process(self, assessment_data: dict, deductible: float):
         base_estimate = assessment_data["damage_estimate"]
-        final_payout = max(
+        # Syntax Error Fixed: Parenthesis closed correctly here
+        final_payout = max(0, base_estimate - deductible)
+        confidence = 0.95 if base_estimate > 0 else 0.40
+        reasoning = (
+            f"Calculated gross repair valuation of ${base_estimate} using real-time automated vector repository search tags. "
+            f"Subtracted standard liability deductible requirement of ${deductible}, adjusting net payout allocation parameters to exactly ${final_payout}."
+        )
+        return {
+            "base_estimate": base_estimate,
+            "deductible_applied": deductible,
+            "final_payout": final_payout,
+            "reasoning": reasoning,
+            "confidence_score": confidence
+        }
+
+# -------------------------------------------------------------------
+# Streamlit Interface Layout
+# -------------------------------------------------------------------
+st.set_page_config(page_title="RAG Agent Claims Engine", page_icon="🤖", layout="wide")
+
+st.title("🤖 Live RAG + LLM Multi-Agent Claims System")
+st.markdown("---")
+
+if "GEMINI_API_KEY" not in os.environ or not os.environ["GEMINI_API_KEY"]:
+    st.error("⚠️ **Missing Configuration:** GEMINI_API_KEY environment variable is not set.")
+    st.stop()
+
+if "pipeline_executed" not in st.session_state:
+    st.session_state.pipeline_executed = False
+    st.session_state.claim_data = None
+    st.session_state.assessment_data = None
+    st.session_state.settlement_results = None
+
+st.sidebar.header("System Controls Configuration")
+deductible_input = st.sidebar.number_input("Policy Deductible Balance ($)", min_value=0, max_value=5000, value=500, step=100)
+approval_threshold = st.sidebar.slider("Automated Wire Threshold Rules ($)", min_value=1000, max_value=10000, value=4000)
+
+tab1, tab2, tab3 = st.tabs(["📥 Intake Portal", "⚙️ Agent Execution Logs", "📊 Settlement Analytics"])
+
+# ==========================================
+# TAB 1: INTAKE PORTAL
+# ==========================================
+with tab1:
+    st.subheader("System Input Channel (Incoming Mail Stream)")
+    default_email = """Subject: Urgent: Claim Submission for Policy #POL-5544219
+From: marcus.porsche.owner@gmail.com
+
+Hello, my car was involved in a parking lot fender bender yesterday. A reversing SUV scraped my 2024 Porsche 911 Carrera. The carbon-fiber front bumper is visibly split, and the front matrix led headlight lens is totally shattered. Please check how much my payout will be."""
+
+    user_email = st.text_area("Live Processing Email Text Stream Container:", value=default_email, height=180)
+    
+    if st.button("Fire Pipeline Execution Engine", type="primary"):
+        with st.spinner("Processing workflows across AI agents..."):
+            fnol_agent = FNOLIntakeAgent()
+            damage_agent = DamageAssessmentAgent()
+            settlement_agent = SettlementCalculationAgent()
+            
+            st.session_state.claim_data = fnol_agent.process(user_email)
+            st.session_state.assessment_data = damage_agent.process(st.session_state.claim_data)
+            st.session_state.settlement_results = settlement_agent.process(st.session_state.assessment_data, deductible_input)
+            st.session_state.pipeline_executed = True
+            
+        st.success("🎉 **Pipeline Execution Complete!** Navigate to the other tabs to see logs and analytics.")
+
+# ==========================================
+# TAB 2: AGENT EXECUTION LOGS
+# ==========================================
+with tab2:
+    st.subheader("Active Pipeline Live Execution Traces")
+    
+    if not st.session_state.pipeline_executed:
+        st.info("💡 **Awaiting Input:** Please go to the **📥 Intake Portal** and run the engine to populate execution logs.")
+    else:
+        st.markdown("### 🕵️‍♂️ Agent 1: FNOL Intake Trace")
+        st.success(f"✅ **Structured Claim Isolated successfully** | Reference Key generated: `{st.session_state.claim_data['claim_number']}`")
+        st.json(st.session_state.claim_data)
+        
+        st.markdown("---")
+        st.markdown("### 🔍 Agent 2: RAG Vector DB Search Logs")
+        st.info(f"Identified parts list for semantic analysis: `{st.session_state.assessment_data['raw_extracted_parts']}`")
+        
+        for item in st.session_state.assessment_data["breakdown"]:
+            st.code(f"Part: {item['Damaged Component']} ➔ Database Strategy: {item['Reference Lookup Source']}", language="text")
+
+# ==========================================
+# TAB 3: SETTLEMENT ANALYTICS
+# ==========================================
+with tab3:
+    st.subheader("System Payout Summary Dashboard")
+    
+    if not st.session_state.pipeline_executed:
+        st.info("💡 **Awaiting Input:** Please go to the **📥 Intake Portal** and run the engine to populate financial dashboards.")
+    else:
+        c_data = st.session_state.claim_data
+        a_data = st.session_state.assessment_data
+        s_data = st.session_state.settlement_results
+        
+        st.markdown("### 📋 Extracted Claim Master Profile")
+        col_a, col_b, col_c, col_d = st.columns(4)
+        col_a.text_input("Policy ID Target", a_data["policy_number"], disabled=True)
+        col_b.text_input("Vehicle Extraction Mapping", a_data["vehicle"], disabled=True)
+        col_c.text_input("Accident Timeline Logged", a_data["date_of_accident"], disabled=True)
+        col_d.text_input("Damage Severity Classification", c_data.get("damage_severity", "Unknown"), disabled=True)
+        
+        st.markdown("---")
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric(label="Calculated Net Payout", value=f"${s_data['final_payout']}")
+        col2.metric(label="Agent Validation Confidence", value=f"{s_data['confidence_score'] * 100}%")
+        col3.metric(label="Deductible Handled", value=f"${s_data['deductible_applied']}", delta=f"-${s_data['deductible_applied']}", delta_color="inverse")
+        
+        if s_data['final_payout'] > approval_threshold:
+            st.error(f"🛑 **Escalation Notification:** Net valuation payout of ${s_data['final_payout']} crosses processing ceiling bounds of ${approval_threshold}. Automated transfers suspended. Pushed to manual review workflows.")
+        else:
+            st.success("✨ **Auto-Approve Action Executed:** Processing parameter balance verification greenlit. Funding transfer issued successfully.")
+            
+        st.info(f"🧠 **Settlement Agent Reasoning Output Trace:** {s_data['reasoning']}")
+        
+        st.markdown("---")
+        
+        st.markdown("#### Vector Search Part Resolution Breakdown Matrix")
+        df = pd.DataFrame(a_data["breakdown"])
+        display_df = df.drop(columns=["Reference Lookup Source"])
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
