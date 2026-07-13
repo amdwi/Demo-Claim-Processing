@@ -213,4 +213,5 @@ demo_templates = {
 # -------------------------------------------------------------------
 st.sidebar.header("🛠️ Workflow Control Panel")
 
-deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value)
+deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value=5000, value=500, step=100)
+
