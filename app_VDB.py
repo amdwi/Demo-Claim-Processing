@@ -213,4 +213,165 @@ demo_templates = {
 st.sidebar.header("🛠️ Workflow Control Panel")
 
 # FIXED LINE HERE: Properly assigned values to keyword arguments
-deductible_input = st.sidebar.
+deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value=5000, value=500, step=100)
+approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_value=1000, max_value=10000, value=5000)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📊 Active Pipeline Rules")
+st.sidebar.metric(label="🔒 Target Deductible", value=f"${deductible_input}")
+st.sidebar.metric(label="🚀 Approval Max Limit", value=f"${approval_threshold}")
+
+# Initialize session state tracking so results persist across tab switches
+if "pipeline_run" not in st.session_state:
+    st.session_state.pipeline_run = False
+    st.session_state.assessment_data = None
+    st.session_state.final_output = None
+
+# -------------------------------------------------------------------
+# Logical Interface Division (Tabs)
+# -------------------------------------------------------------------
+tab1, tab2, tab3 = st.tabs([
+    "📥 1. Intake & Agent Execution", 
+    "⚖️ 2. Settlement & Integrity Audit", 
+    "📊 3. Analytics & Cost Matrix"
+])
+
+# --- TAB 1: INTAKE & LIVE EXECUTION ---
+with tab1:
+    col_left, col_right = st.columns([1, 1], gap="large")
+    
+    with col_left:
+        st.subheader("Claim Presentation Input")
+        selected_template = st.selectbox("🎯 Quick-Select Demo Scenarios:", list(demo_templates.keys()))
+        current_email_body = demo_templates[selected_template]
+        user_email = st.text_area("Email Body Input Field:", value=current_email_body, height=160)
+        execute_pipeline = st.button("Execute Multi-Agent Pipeline", type="primary", use_container_width=True)
+
+    with col_right:
+        st.subheader("Live Agent Execution Monitor")
+        status_box = st.container()
+        
+        if execute_pipeline:
+            fnol_agent = FNOLIntakeAgent()
+            damage_agent = DamageAssessmentAgent()
+            settlement_agent = SettlementCalculationAgent()
+            
+            # Step 1: FNOL Intake
+            p1 = st.status("🔄 [FNOL Intake] Reading narrative data...", expanded=False)
+            claim_data = fnol_agent.process(user_email)
+            time.sleep(0.5)
+            p1.update(label=f"✅ FNOL Completed ({claim_data['claim_number']})", state="complete")
+            
+            # Step 2: Damage Assessment
+            p2 = st.status("🔄 [Vector DB Search] Matching components against Vector Database...", expanded=True)
+            st.session_state.assessment_data = damage_agent.process(claim_data)
+            
+            if st.session_state.assessment_data["vector_logs"]:
+                st.markdown("##### 🎯 Embedded Vector Matching Matrix:")
+                st.dataframe(
+                    pd.DataFrame(st.session_state.assessment_data["vector_logs"]),
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.caption("No custom components parsed for vector matching.")
+                
+            time.sleep(0.5)
+            p2.update(label="✅ Vector Semantic Parameters Extracted", state="complete")
+            
+            # Step 3: Calculation Engine
+            p3 = st.status("🔄 [Settlement Calculation] Assessing final payouts...", expanded=False)
+            st.session_state.final_output = settlement_agent.process(st.session_state.assessment_data, deductible_input)
+            time.sleep(0.5)
+            p3.update(label="✅ Risk & Integrity Audit Finalized", state="complete")
+            
+            st.session_state.pipeline_run = True
+            st.success("🎉 Multi-agent analysis completed! Check Tabs 2 and 3 for results.")
+        
+        elif st.session_state.pipeline_run:
+            st.info("✅ Last run data cached. You can check the remaining tabs or re-run the pipeline above.")
+            if st.session_state.assessment_data and st.session_state.assessment_data.get("vector_logs"):
+                st.markdown("##### 🎯 Cached Vector Matching Matrix:")
+                st.dataframe(
+                    pd.DataFrame(st.session_state.assessment_data["vector_logs"]),
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            status_box.info("ℹ️ Press **'Execute Multi-Agent Pipeline'** to trigger data sequence analysis.")
+
+# --- TAB 2: SETTLEMENT & INTEGRITY AUDIT ---
+with tab2:
+    st.subheader("Final Settlement Assessment & Routing Logic")
+    
+    if st.session_state.pipeline_run:
+        final_output = st.session_state.final_output
+        assessment_data = st.session_state.assessment_data
+        
+        # Financial Metrics
+        m1, m2, m3 = st.columns(3)
+        m1.metric(label="Calculated Net Payout", value=f"${final_output['final_payout']}")
+        m2.metric(label="Calculation Confidence Score", value=f"{final_output['confidence_score'] * 100}%")
+        m3.info(f"**Calculated Deductible Applied:** ${final_output['deductible_applied']}")
+        
+        # AI Reasoning Statement
+        st.warning(f"💡 **Agent Calculation Reasoning:** {final_output['reasoning']}")
+        
+        # Guardrail System Logs
+        st.markdown("### 🛑 Automated Routing Guardrails")
+        if final_output['final_payout'] > approval_threshold:
+            st.error(f"⚠️ **Action Required**: Net payout (${final_output['final_payout']}) exceeds threshold limit of ${approval_threshold}. Claim routed to manual human review.")
+        elif final_output['confidence_score'] < 0.70:
+            st.error(f"⚠️ **Action Required**: Confidence score is below acceptable limits ({final_output['confidence_score'] * 100}%). Details are too vague; routing to manual human review.")
+        else:
+            st.success("✨ **Auto-Approved**: Claim settlement approved within standard automated parameters.")
+    else:
+        st.info("📥 Please run the execution pipeline in **Tab 1** to view settlement data.")
+
+# --- TAB 3: ANALYTICS & COST MATRIX ---
+with tab3:
+    st.subheader("Extracted Metadata Matrix & Financial Data Visualization")
+    
+    if st.session_state.pipeline_run:
+        assessment_data = st.session_state.assessment_data
+        
+        # Metadata Card Layout
+        c_meta1, c_meta2, c_meta3, c_meta4 = st.columns(4)
+        c_meta1.text_input("Extracted Policy Number", assessment_data["policy_number"], disabled=True)
+        c_meta2.text_input("Vehicle Associated", assessment_data["vehicle"], disabled=True)
+        c_meta3.text_input("Date of Accident", assessment_data["date_of_accident"], disabled=True)
+        c_meta4.text_input("Damage Estimate Gross", f"${assessment_data['damage_estimate']}", disabled=True)
+        
+        st.markdown("---")
+        
+        if assessment_data["breakdown"]:
+            df = pd.DataFrame(assessment_data["breakdown"])
+            
+            # Interactive Plotly Charts
+            st.markdown("#### Cost Allocation Visualizations")
+            chart_col1, chart_col2 = st.columns(2)
+            
+            with chart_col1:
+                pie_data = pd.DataFrame({
+                    "Cost Type": ["Replacement Part Cost", "Total Labor Cost"],
+                    "Total USD ($)": [assessment_data["total_parts_cost"], assessment_data["total_labor_cost"]]
+                })
+                fig_pie = px.pie(pie_data, values="Total USD ($)", names="Cost Type", 
+                                 title="Cost Distribution Ratio (Parts vs Labor)",
+                                 color_discrete_sequence=px.colors.sequential.RdBu)
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+            with chart_col2:
+                fig_bar = px.bar(df, x="Damaged Component", y="Total Component Cost",
+                                 text_auto='.2s', title="Total Cost Stacked by Component",
+                                 labels={"Total Component Cost": "Cost ($)"},
+                                 color_discrete_sequence=["#1f77b4"])
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+            # Data Table
+            st.markdown("#### Detailed Pricing Audit Grid")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.warning("⚠️ No specific damaged components recognized by the database; dynamic charting skipped.")
+    else:
+        st.info("📥 Please run the execution pipeline in **Tab 1** to generate metrics and charts.")
