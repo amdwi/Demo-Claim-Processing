@@ -55,7 +55,7 @@ def mock_llm_extract_entities(text):
             "damaged_parts": [] 
         }
     else:
-        # We pass through text hints directly to showcase the Vector DB handling raw phrasing variations
+        # Pass through text hints directly to showcase the Vector DB handling raw variations
         parts = ["rear bumper", "tail light"]
         if "scratch" in text_lower:
             parts = ["scratched rear bumper skin"]
@@ -112,7 +112,7 @@ class DamageAssessmentAgent:
         total_labor = 0
         total_parts_cost = 0
         breakdown = []
-        vector_logs = []  # For frontend client transparency
+        vector_logs = []  # Exposes transparency to the client
         
         for part in parts:
             # Semantic search across our free vector collection
@@ -124,7 +124,6 @@ class DamageAssessmentAgent:
             if results and results['metadatas'] and len(results['metadatas'][0]) > 0:
                 metrics = results['metadatas'][0][0]
                 matched_component = results['documents'][0][0]
-                # Lower distance score means a closer semantic vector match
                 distance = results['distances'][0][0] if results['distances'] else 0.0
                 match_confidence = f"{max(0, round((1 - distance) * 100, 1))}%"
             else:
@@ -211,8 +210,7 @@ demo_templates = {
 # -------------------------------------------------------------------
 # Sidebar Design (Global Pipeline Controls)
 # -------------------------------------------------------------------
-# BROKEN CODE
 st.sidebar.header("🛠️ Workflow Control Panel")
 
-deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value)
-approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_value=1000, max_value=10000, value=5000)
+# FIXED LINE HERE: Properly assigned values to keyword arguments
+deductible_input = st.sidebar.
