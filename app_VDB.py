@@ -8,7 +8,7 @@ import plotly.express as px
 import chromadb
 
 # -------------------------------------------------------------------
-# Smart Mock LLM Engine (Now acts purely as a raw entity extractor)
+# Smart Mock LLM Engine (Acts as a raw entity extractor)
 # -------------------------------------------------------------------
 def mock_llm_extract_entities(text):
     text_lower = text.lower()
@@ -17,12 +17,11 @@ def mock_llm_extract_entities(text):
     policy_match = re.search(r"pol-\d+", text_lower)
     policy = policy_match.group(0).upper() if policy_match else "POL-9988112"
     
-    # 2. Extract RAW, uncorrected vehicle descriptions based on simple text windows
+    # 2. Extract RAW, uncorrected vehicle descriptions using a relaxed keyword list
     raw_vehicle = "Unknown Vehicle"
-    vehicle_keywords = ["porsche", "porse", "porshe", "911", "tesla", "tesl", "camry", "toyota", "ford", "f-150", "f150"]
+    vehicle_keywords = ["porsche", "porse", "porshe", "911", "tesla", "tesl", "tsla", "camry", "toyota", "ford", "f-150", "f150"]
     for kw in vehicle_keywords:
         if kw in text_lower:
-            # Grab a window of text around the vehicle mention to capture context/typos
             start_idx = max(0, text_lower.find(kw) - 7)
             end_idx = min(len(text_lower), text_lower.find(kw) + len(kw) + 12)
             raw_vehicle = text[start_idx:end_idx].strip()
@@ -32,18 +31,17 @@ def mock_llm_extract_entities(text):
     raw_parts = []
     if "bumper" in text_lower or "bum" in text_lower:
         if "front" in text_lower:
-            # Capture whatever variant of front bumper/bum was written
             match = re.search(r"([^,\.\n]*front\s+\w+)", text_lower)
             raw_parts.append(match.group(0) if match else "front bumper")
         if "rear" in text_lower or "back" in text_lower:
-            match = re.search(r"([^,\.\n]*(?:rear|backed)\s+\w+)", text_lower)
+            match = re.search(r"([^,\.\n]*(?:rear|backed|scratched)\s+\w+)", text_lower)
             raw_parts.append(match.group(0) if match else "rear bumper")
             
     if "light" in text_lower or "headlight" in text_lower or "tail" in text_lower:
         if "head" in text_lower or "matrix" in text_lower:
             match = re.search(r"([^,\.\n]*(?:matrix|head)\s+\w+)", text_lower)
             raw_parts.append(match.group(0) if match else "matrix headlight")
-        if "tail" in text_lower or "shatter" in text_lower:
+        if "tail" in text_lower or "shatter" in text_lower or "pole" in text_lower:
             match = re.search(r"([^,\.\n]*(?:tail|right|shatter)\s+\w+\s*\w*)", text_lower)
             raw_parts.append(match.group(0) if match else "tail light")
 
@@ -113,7 +111,7 @@ class DamageAssessmentAgent:
         raw_car = structured_claim.get("raw_extracted_vehicle", "Unknown Vehicle")
         raw_parts = structured_claim.get("damaged_parts", [])
         
-        vector_logs = [] # UI visibility log
+        vector_logs = [] 
         
         # --- 1. VECTOR MATCH THE VEHICLE BRAND/MODEL ---
         v_res = self.vehicle_collection.query(query_texts=[raw_car], n_results=1)
@@ -211,142 +209,27 @@ st.title("🤖 Intelligent Claims Processing Platform")
 st.markdown("---")
 
 demo_templates = {
-    "Default: Standard Camry Claim": 
+    "🟢 Auto-Approve 1: Toyota Rear-end Impact": 
         "Under policy POL-1234567, I am reporting that a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered.",
-    "Client Test: Porsche Typo Case":
+    
+    "🟢 Auto-Approve 2: Minor Tesla Curb Scraping":
+        "Claim filing under policy POL-4499002: I scraped the lower front bummper of my 2022 Tsla Modl 3 against a high curb while parking.",
+    
+    "🟢 Auto-Approve 3: Camry Parking Lot Pole Scrap":
+        "Regarding policy POL-7744331, I accidentally backed into a concrete pole while leaving home, fracturing the right tail light on my Camry.",
+        
+    "🔴 Human Review 1: Exceeds Threshold (Porsche Typo)";
         "Urgent claim for policy POL-5544219: My 204 Porse was hit head-on, completely destroying the fiber front bum and the matrix headlight.",
-    "Demo 1: Tesla Front Skirt Scraping":
-        "Claim filing under policy POL-4499002: I scraped the lower front bumper of my 2022 Tesla Model 3 against a high curb while parking."
+        
+    "🔴 Human Review 2: Low Confidence / Vague Context":
+        "Under policy POL-1122334, something hit me while driving on the highway and I am not sure what happened, but there is a strange metal scraping noise.",
+        
+    "🔴 Human Review 3: Severe Engine/Structural Failure":
+        "Filing for policy POL-6655443: A truck sideswiped my F-150. There is major body alignment damage and thick smoke is pouring out of the front engine block."
 }
 
 # -------------------------------------------------------------------
 # Sidebar Design (Global Pipeline Controls)
 # -------------------------------------------------------------------
 st.sidebar.header("🛠️ Workflow Control Panel")
-deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value=5000, value=500, step=100)
-approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_value=1000, max_value=10000, value=5000)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 Active Pipeline Rules")
-st.sidebar.metric(label="🔒 Target Deductible", value=f"${deductible_input}")
-st.sidebar.metric(label="🚀 Approval Max Limit", value=f"${approval_threshold}")
-
-if "pipeline_run" not in st.session_state:
-    st.session_state.pipeline_run = False
-    st.session_state.assessment_data = None
-    st.session_state.final_output = None
-
-# -------------------------------------------------------------------
-# Interface Division (Tabs)
-# -------------------------------------------------------------------
-tab1, tab2, tab3 = st.tabs([
-    "📥 1. Intake & Agent Execution", 
-    "⚖️ 2. Settlement & Integrity Audit", 
-    "📊 3. Analytics & Cost Matrix"
-])
-
-# --- TAB 1: INTAKE & LIVE EXECUTION ---
-with tab1:
-    col_left, col_right = st.columns([1, 1], gap="large")
-    
-    with col_left:
-        st.subheader("Claim Presentation Input")
-        selected_template = st.selectbox("🎯 Quick-Select Demo Scenarios:", list(demo_templates.keys()))
-        current_email_body = demo_templates[selected_template]
-        user_email = st.text_area("Email Body Input Field:", value=current_email_body, height=160)
-        execute_pipeline = st.button("Execute Multi-Agent Pipeline", type="primary", use_container_width=True)
-
-    with col_right:
-        st.subheader("Live Agent Execution Monitor")
-        
-        if execute_pipeline:
-            fnol_agent = FNOLIntakeAgent()
-            damage_agent = DamageAssessmentAgent()
-            settlement_agent = SettlementCalculationAgent()
-            
-            p1 = st.status("🔄 [FNOL Intake] Parsing unstructured entities...", expanded=False)
-            claim_data = fnol_agent.process(user_email)
-            time.sleep(0.4)
-            p1.update(label=f"✅ FNOL Text Entities Parsed ({claim_data['claim_number']})", state="complete")
-            
-            p2 = st.status("🔄 [Vector DB Engine] Querying Vector Collections...", expanded=True)
-            st.session_state.assessment_data = damage_agent.process(claim_data)
-            
-            # UNIQUE TRANSPARENCY BLOCK SHOWING BOTH VEHICLE & PART RESOLUTION
-            if st.session_state.assessment_data["vector_logs"]:
-                st.markdown("##### 🎯 Dynamic Vector DB Alignment Matrix:")
-                st.dataframe(
-                    pd.DataFrame(st.session_state.assessment_data["vector_logs"]),
-                    use_container_width=True, hide_index=True
-                )
-            time.sleep(0.4)
-            p2.update(label="✅ Vector Identity & Part Mapping Complete", state="complete")
-            
-            p3 = st.status("🔄 [Settlement Calculation] Assessing financial payout...", expanded=False)
-            st.session_state.final_output = settlement_agent.process(st.session_state.assessment_data, deductible_input)
-            time.sleep(0.4)
-            p3.update(label="✅ Calculations Finalized", state="complete")
-            
-            st.session_state.pipeline_run = True
-            st.success("🎉 Processing complete! Check next tabs.")
-            
-        elif st.session_state.pipeline_run:
-            st.info("✅ Last run data cached.")
-            if st.session_state.assessment_data and st.session_state.assessment_data.get("vector_logs"):
-                st.markdown("##### 🎯 Cached Vector DB Alignment Matrix:")
-                st.dataframe(
-                    pd.DataFrame(st.session_state.assessment_data["vector_logs"]),
-                    use_container_width=True, hide_index=True
-                )
-        else:
-            st.info("ℹ️ Press **'Execute Multi-Agent Pipeline'** to trigger analysis.")
-
-# --- TAB 2: SETTLEMENT & INTEGRITY AUDIT ---
-with tab2:
-    st.subheader("Final Settlement Assessment & Routing Logic")
-    if st.session_state.pipeline_run:
-        final_output = st.session_state.final_output
-        m1, m2, m3 = st.columns(3)
-        m1.metric(label="Calculated Net Payout", value=f"${final_output['final_payout']}")
-        m2.metric(label="Calculation Confidence Score", value=f"{final_output['confidence_score'] * 100}%")
-        m3.info(f"**Calculated Deductible Applied:** ${final_output['deductible_applied']}")
-        
-        st.warning(f"💡 **Agent Calculation Reasoning:** {final_output['reasoning']}")
-        
-        st.markdown("### 🛑 Automated Routing Guardrails")
-        if final_output['final_payout'] > approval_threshold:
-            st.error(f"⚠️ **Action Required**: Net payout (${final_output['final_payout']}) exceeds threshold limit of ${approval_threshold}. Claim routed to manual human review.")
-        else:
-            st.success("✨ **Auto-Approved**: Claim settlement approved within standard automated parameters.")
-    else:
-        st.info("📥 Please run the execution pipeline in **Tab 1** to view settlement data.")
-
-# --- TAB 3: ANALYTICS & COST MATRIX ---
-with tab3:
-    st.subheader("Extracted Metadata Matrix & Financial Data Visualization")
-    if st.session_state.pipeline_run:
-        assessment_data = st.session_state.assessment_data
-        
-        c_meta1, c_meta2, c_meta3, c_meta4 = st.columns(4)
-        c_meta1.text_input("Resolved Vehicle Make/Model", assessment_data["vehicle"], disabled=True)
-        c_meta2.text_input("Extracted Policy Number", assessment_data["policy_number"], disabled=True)
-        c_meta3.text_input("Date of Accident", assessment_data["date_of_accident"], disabled=True)
-        c_meta4.text_input("Damage Estimate Gross", f"${assessment_data['damage_estimate']}", disabled=True)
-        
-        st.markdown("---")
-        if assessment_data["breakdown"]:
-            df = pd.DataFrame(assessment_data["breakdown"])
-            chart_col1, chart_col2 = st.columns(2)
-            with chart_col1:
-                pie_data = pd.DataFrame({
-                    "Cost Type": ["Replacement Part Cost", "Total Labor Cost"],
-                    "Total USD ($)": [assessment_data["total_parts_cost"], assessment_data["total_labor_cost"]]
-                })
-                fig_pie = px.pie(pie_data, values="Total USD ($)", names="Cost Type", title="Cost Distribution Ratio", color_discrete_sequence=px.colors.sequential.RdBu)
-                st.plotly_chart(fig_pie, use_container_width=True)
-            with chart_col2:
-                fig_bar = px.bar(df, x="Damaged Component", y="Total Component Cost", text_auto='.2s', title="Total Cost Stacked by Component")
-                st.plotly_chart(fig_bar, use_container_width=True)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.info("📥 Please run the execution pipeline in **Tab 1** to generate metrics.")
+deductible_input = st.sidebar.number_
