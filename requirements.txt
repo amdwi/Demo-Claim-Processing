@@ -6,3 +6,4 @@ plotly
 pydantic
 chromadb
 google-genai
+pypdf
