@@ -54,29 +54,39 @@ class FNOLIntakeAgent:
 # Agent 2: Damage Assessment Agent (Semantic Vector DB RAG Search)
 # -------------------------------------------------------------------
 class DamageAssessmentAgent:
-# Look inside your DamageAssessmentAgent class init method
-def __init__(self):
-    # Initialize your client and embedding function here as you already have...
-    # self.chroma_client = ...
-    # self.emb_fn = ...
-    
-    # 🔄 CHANGE THIS LINE: Swap get_collection with get_or_create_collection
-    self.collection = self.chroma_client.get_or_create_collection(
-        name="part_costs_catalog",
-        embedding_function=self.emb_fn
-    )
-    
-    # Optional: Automatically seed data if the collection was just created fresh
-    if self.collection.count() == 0:
-        # If your collection is empty, insert your demo vectors/data here
-        # Example:
-        # self.collection.add(
-        #     documents=["carbon-fiber front bumper", "matrix led headlight"],
-        #     ids=["part_1", "part_2"],
-        #     metadatas=[{"labor_hours": 8, "part_cost": 2800}, {"labor_hours": 3, "part_cost": 3200}]
-        # )
-        pass
+    # 🔴 Make sure this function header is shifted 4 spaces inside the class
+    def __init__(self):
+        # 🔴 Make sure all code lines here are shifted 8 spaces inside the class
+        import chromadb
+        from chromadb.utils import embedding_functions
         
+        self.chroma_client = chromadb.Client()
+        self.emb_fn = embedding_functions.DefaultEmbeddingFunction()
+        
+        # Safe collection creation as fixed previously
+        self.collection = self.chroma_client.get_or_create_collection(
+            name="part_costs_catalog",
+            embedding_function=self.emb_fn
+        )
+        
+        # If your database is empty, seed the initial catalog rules
+        if self.collection.count() == 0:
+            self.collection.add(
+                documents=["carbon-fiber front bumper", "matrix led headlight", "rear bumper", "tail light", "front bumper"],
+                ids=["part_1", "part_2", "part_3", "part_4", "part_5"],
+                metadatas=[
+                    {"labor_hours": 8, "part_cost": 2800, "rate_per_hour": 150},
+                    {"labor_hours": 3, "part_cost": 3200, "rate_per_hour": 150},
+                    {"labor_hours": 4, "part_cost": 450, "rate_per_hour": 100},
+                    {"labor_hours": 1, "part_cost": 150, "rate_per_hour": 100},
+                    {"labor_hours": 5, "part_cost": 600, "rate_per_hour": 100}
+                ]
+            )
+
+    # 🔴 Make sure the next method (process) is also shifted 4 spaces inside the class
+    def process(self, structured_claim: dict):
+        # Your remaining damage agent processing code...
+        pass        
     def process(self, structured_claim: dict):
         parts = structured_claim.get("damaged_parts", [])
         total_estimate = 0
