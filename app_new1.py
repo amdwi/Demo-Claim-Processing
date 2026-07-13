@@ -15,6 +15,7 @@ def mock_llm_extract_entities(text):
     policy = "POL-9988112"
     accident_date = datetime.now().strftime("%Y-%m-%d")
     
+    # High-value vehicle (Auto-approved if under threshold, but prone to human review trigger)
     if "porsche" in text_lower or "911" in text_lower:
         return {
             "policy_number": "POL-5544219",
@@ -23,6 +24,7 @@ def mock_llm_extract_entities(text):
             "damage_severity": "Severe",
             "damaged_parts": ["carbon-fiber front bumper", "matrix led headlight"]
         }
+    # Standard Tesla example
     elif "tesla" in text_lower:
         return {
             "policy_number": "POL-3322110",
@@ -31,6 +33,25 @@ def mock_llm_extract_entities(text):
             "damage_severity": "Severe",
             "damaged_parts": ["front bumper", "rear bumper"]
         }
+    # Demo Case: Unknown structural/engine damage (Triggers manual routing via high cost simulation)
+    elif "engine" in text_lower or "structural" in text_lower or "smoke" in text_lower:
+        return {
+            "policy_number": "POL-7766554",
+            "vehicle": "2023 Ford F-150",
+            "date_of_accident": "2026-07-11",
+            "damage_severity": "Severe",
+            "damaged_parts": ["front bumper", "matrix led headlight", "carbon-fiber front bumper"] # Intentionally stacking high costs to breach threshold
+        }
+    # Demo Case: Vague/Ambiguous Text (Will result in empty parts list -> Low Confidence Score)
+    elif "something" in text_lower or "hit me" in text_lower or "not sure" in text_lower:
+        return {
+            "policy_number": "POL-UNKNOWN",
+            "vehicle": "Unknown Vehicle",
+            "date_of_accident": accident_date,
+            "damage_severity": "Unknown",
+            "damaged_parts": [] # Empty parts will drop confidence score to 50%
+        }
+    # Standard Default (Toyota Camry / Simple cases)
     else:
         return {
             "policy_number": policy,
@@ -93,7 +114,6 @@ class DamageAssessmentAgent:
                 "Total Component Cost": cost
             })
                 
-        # Return enhanced profile requested for Agent 2
         return {
             "claim_number": structured_claim["claim_number"],
             "policy_number": structured_claim["policy_number"],
@@ -155,8 +175,11 @@ class CentralManager:
         col_c.text_input("Date of Accident", assessment_data["date_of_accident"], disabled=True)
         col_d.text_input("Damage Estimate Gross", f"${assessment_data['damage_estimate']}", disabled=True)
         
-        df = pd.DataFrame(assessment_data["breakdown"])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        if assessment_data["breakdown"]:
+            df = pd.DataFrame(assessment_data["breakdown"])
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.warning("⚠️ No specific damaged components recognized by the RAG database.")
         
         # Step 3: Settlement Calculations
         status_container.info("🔄 **[Manager]** Assessing final payout limits via **Settlement Agent**...")
@@ -176,12 +199,36 @@ deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0,
 approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_value=1000, max_value=10000, value=5000)
 
 st.subheader("1. Incoming Claims Email Processing")
-default_email = """Subject: Accident Claim Submission
-From: driver@email.com
 
-Hello, I am writing to report an incident. I was waiting at a red light when a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered."""
+# Pre-configured demo examples mapping
+demo_templates = {
+    "Default: Standard Camry Claim": 
+        "Hello, I am writing to report an incident. I was waiting at a red light when a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered.",
+    
+    "Demo 1 (Simple/Auto-Approve): Rear-end Bumper Scratch":
+        "Someone backed into my 2022 Toyota Camry in the grocery parking lot and scratched my rear bumper.",
+    
+    "Demo 2 (Simple/Auto-Approve): Backed into Pole":
+        "I misjudged my driveway and backed into a pole, shattering the right tail light on my Camry.",
+    
+    "Demo 3 (Simple/Auto-Approve): Minor Tesla Front Skirt Scraping":
+        "Scraped the lower front bumper of my 2022 Tesla Model 3 against a high curb while parking.",
+        
+    "Demo 4 (Human Review: Exceeds $ Threshold)":
+        "My 2024 Porsche 911 was hit head-on, completely destroying the carbon-fiber front bumper and the matrix led headlight.",
+        
+    "Demo 5 (Human Review: Severe Engine/Structural Damage)":
+        "A truck sideswiped me, causing severe structural frame damage and smoke is pouring out of the engine.",
+        
+    "Demo 6 (Human Review: Low Confidence / Vague Details)":
+        "Something hit me while driving on the highway and I am not sure what happened, but there is a strange noise."
+}
 
-user_email = st.text_area("Email Body Input Field:", value=default_email, height=140)
+# Dropdown picker for demo presentation
+selected_template = st.selectbox("🎯 Quick-Select Demo Scenarios:", list(demo_templates.keys()))
+current_email_body = demo_templates[selected_template]
+
+user_email = st.text_area("Email Body Input Field:", value=current_email_body, height=140)
 
 if st.button("Execute Pipeline", type="primary"):
     st.markdown("---")
@@ -204,7 +251,10 @@ if st.button("Execute Pipeline", type="primary"):
     
     st.warning(f"💡 **Agent Calculation Reasoning:** {final_output['reasoning']}")
     
+    # Dual Escalation Guardrails (Cost Exceeded OR Low LLM Confidence Score)
     if final_output['final_payout'] > approval_threshold:
-        st.error(f"⚠️ **Action Required**: Net payout exceeds threshold of ${approval_threshold}. Claim routed to manual review.")
+        st.error(f"⚠️ **Action Required**: Net payout (${final_output['final_payout']}) exceeds threshold of ${approval_threshold}. Claim routed to manual review.")
+    elif final_output['confidence_score'] < 0.70:
+        st.error(f"⚠️ **Action Required**: Confidence score is below acceptable limits ({final_output['confidence_score'] * 100}%). Details are too vague; routing to human review.")
     else:
         st.success("✨ **Auto-Approved**: Claim settlement approved within automated parameters.")
