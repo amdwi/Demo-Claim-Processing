@@ -2,6 +2,7 @@ import streamlit as st
 import time
 import pandas as pd
 import uuid
+import re
 from datetime import datetime
 
 # -------------------------------------------------------------------
@@ -11,14 +12,19 @@ def mock_llm_extract_entities(text):
     time.sleep(1.2) 
     text_lower = text.lower()
     
-    # Defaults
-    policy = "POL-9988112"
+    # Dynamic Policy Number Extraction from Email Text
+    policy_match = re.search(r"pol-\d+", text_lower)
+    if policy_match:
+        policy = policy_match.group(0).upper()
+    else:
+        policy = "POL-9988112" # Fallback default
+        
     accident_date = datetime.now().strftime("%Y-%m-%d")
     
     # High-value vehicle (Auto-approved if under threshold, but prone to human review trigger)
     if "porsche" in text_lower or "911" in text_lower:
         return {
-            "policy_number": "POL-5544219",
+            "policy_number": policy,
             "vehicle": "2024 Porsche 911 Carrera",
             "date_of_accident": "2026-07-10",
             "damage_severity": "Severe",
@@ -27,7 +33,7 @@ def mock_llm_extract_entities(text):
     # Standard Tesla example
     elif "tesla" in text_lower:
         return {
-            "policy_number": "POL-3322110",
+            "policy_number": policy,
             "vehicle": "2022 Tesla Model 3",
             "date_of_accident": "2026-07-12",
             "damage_severity": "Severe",
@@ -36,20 +42,20 @@ def mock_llm_extract_entities(text):
     # Demo Case: Unknown structural/engine damage (Triggers manual routing via high cost simulation)
     elif "engine" in text_lower or "structural" in text_lower or "smoke" in text_lower:
         return {
-            "policy_number": "POL-7766554",
+            "policy_number": policy,
             "vehicle": "2023 Ford F-150",
             "date_of_accident": "2026-07-11",
             "damage_severity": "Severe",
-            "damaged_parts": ["front bumper", "matrix led headlight", "carbon-fiber front bumper"] # Intentionally stacking high costs to breach threshold
+            "damaged_parts": ["front bumper", "matrix led headlight", "carbon-fiber front bumper"] 
         }
     # Demo Case: Vague/Ambiguous Text (Will result in empty parts list -> Low Confidence Score)
     elif "something" in text_lower or "hit me" in text_lower or "not sure" in text_lower:
         return {
-            "policy_number": "POL-UNKNOWN",
+            "policy_number": policy if policy_match else "POL-UNKNOWN",
             "vehicle": "Unknown Vehicle",
             "date_of_accident": accident_date,
             "damage_severity": "Unknown",
-            "damaged_parts": [] # Empty parts will drop confidence score to 50%
+            "damaged_parts": [] 
         }
     # Standard Default (Toyota Camry / Simple cases)
     else:
@@ -200,28 +206,28 @@ approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_val
 
 st.subheader("1. Incoming Claims Email Processing")
 
-# Pre-configured demo examples mapping
+# Pre-configured demo examples mapping (Updated with distinct Policy Numbers)
 demo_templates = {
     "Default: Standard Camry Claim": 
-        "Hello, I am writing to report an incident. I was waiting at a red light when a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered.",
+        "Under policy POL-1234567, I am reporting that a delivery van bumped into my 2022 Toyota Camry from behind. The rear bumper is cracked and the left tail light is completely shattered.",
     
     "Demo 1 (Simple/Auto-Approve): Rear-end Bumper Scratch":
-        "Someone backed into my 2022 Toyota Camry in the grocery parking lot and scratched my rear bumper.",
+        "Regarding policy POL-8822113: Someone backed into my 2022 Toyota Camry in the grocery parking lot and scratched my rear bumper.",
     
     "Demo 2 (Simple/Auto-Approve): Backed into Pole":
-        "I misjudged my driveway and backed into a pole, shattering the right tail light on my Camry.",
+        "For policy POL-7744331, I accidentally backed into a pole at home, shattering the right tail light on my Camry.",
     
     "Demo 3 (Simple/Auto-Approve): Minor Tesla Front Skirt Scraping":
-        "Scraped the lower front bumper of my 2022 Tesla Model 3 against a high curb while parking.",
+        "Claim filing under policy POL-4499002: I scraped the lower front bumper of my 2022 Tesla Model 3 against a high curb while parking.",
         
     "Demo 4 (Human Review: Exceeds $ Threshold)":
-        "My 2024 Porsche 911 was hit head-on, completely destroying the carbon-fiber front bumper and the matrix led headlight.",
+        "Urgent claim for policy POL-5544219: My 2024 Porsche 911 was hit head-on, completely destroying the carbon-fiber front bumper and the matrix led headlight.",
         
     "Demo 5 (Human Review: Severe Engine/Structural Damage)":
-        "A truck sideswiped me, causing severe structural frame damage and smoke is pouring out of the engine.",
+        "Filing for policy POL-6655443: A truck sideswiped my vehicle, causing severe structural frame damage and smoke is pouring out of the engine.",
         
     "Demo 6 (Human Review: Low Confidence / Vague Details)":
-        "Something hit me while driving on the highway and I am not sure what happened, but there is a strange noise."
+        "Under policy POL-1122334, something hit me while driving on the highway and I am not sure what happened, but there is a strange noise."
 }
 
 # Dropdown picker for demo presentation
