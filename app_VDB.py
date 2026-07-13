@@ -211,7 +211,8 @@ demo_templates = {
 # -------------------------------------------------------------------
 # Sidebar Design (Global Pipeline Controls)
 # -------------------------------------------------------------------
+# BROKEN CODE
 st.sidebar.header("🛠️ Workflow Control Panel")
 
-deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value=5000, value=500, step=100)
-
+deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value)
+approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_value=1000, max_value=10000, value=5000)
