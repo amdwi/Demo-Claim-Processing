@@ -218,7 +218,7 @@ demo_templates = {
     "🟢 Auto-Approve 3: Camry Parking Lot Pole Scrap":
         "Regarding policy POL-7744331, I accidentally backed into a concrete pole while leaving home, fracturing the right tail light on my Camry.",
         
-    "🔴 Human Review 1: Exceeds Threshold (Porsche Typo)";
+    "🔴 Human Review 1: Exceeds Threshold (Porsche Typo)":
         "Urgent claim for policy POL-5544219: My 204 Porse was hit head-on, completely destroying the fiber front bum and the matrix headlight.",
         
     "🔴 Human Review 2: Low Confidence / Vague Context":
