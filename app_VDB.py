@@ -55,12 +55,12 @@ def mock_llm_extract_entities(text):
             "damaged_parts": [] 
         }
     else:
-        # We can pass through text hints directly to let the Vector DB handle raw matching
+        # We pass through text hints directly to showcase the Vector DB handling raw phrasing variations
         parts = ["rear bumper", "tail light"]
         if "scratch" in text_lower:
-            parts = ["rear bumper"]
+            parts = ["scratched rear bumper skin"]
         elif "pole" in text_lower:
-            parts = ["tail light"]
+            parts = ["shattered right tail light assembly"]
         return {
             "policy_number": policy,
             "vehicle": "2022 Toyota Camry",
@@ -80,18 +80,14 @@ class FNOLIntakeAgent:
 
 class DamageAssessmentAgent:
     def __init__(self):
-        # 1. Initialize ephemeral/in-memory free Chroma client
+        # Initialize ephemeral/in-memory free Chroma client
         self.chroma_client = chromadb.Client()
-        
-        # 2. Get or create a collection for storing components catalog
         self.collection = self.chroma_client.get_or_create_collection(name="parts_knowledge_base")
         
-        # 3. Seed the Database if empty
         if self.collection.count() == 0:
             self._seed_knowledge_base()
         
     def _seed_knowledge_base(self):
-        # Raw component metadata rules
         kb_data = {
             "carbon-fiber front bumper": {"labor_hours": 8, "part_cost": 2800, "rate_per_hour": 150},
             "matrix led headlight": {"labor_hours": 3, "part_cost": 3200, "rate_per_hour": 150},
@@ -100,12 +96,10 @@ class DamageAssessmentAgent:
             "front bumper": {"labor_hours": 5, "part_cost": 600, "rate_per_hour": 100},
         }
         
-        # Format elements for insertion into the vector space
         documents = list(kb_data.keys())
         ids = [f"part_{i}" for i in range(len(documents))]
         metadatas = [kb_data[part] for part in documents]
         
-        # ChromaDB automatically handles embedding generation locally using its built-in model
         self.collection.add(
             documents=documents,
             metadatas=metadatas,
@@ -118,22 +112,25 @@ class DamageAssessmentAgent:
         total_labor = 0
         total_parts_cost = 0
         breakdown = []
+        vector_logs = []  # For frontend client transparency
         
         for part in parts:
             # Semantic search across our free vector collection
-            # It queries the vector space and extracts the 1 most textually/semantically relevant entry
             results = self.collection.query(
                 query_texts=[part],
                 n_results=1
             )
             
-            # Fallback guard in case search results are empty
             if results and results['metadatas'] and len(results['metadatas'][0]) > 0:
                 metrics = results['metadatas'][0][0]
                 matched_component = results['documents'][0][0]
+                # Lower distance score means a closer semantic vector match
+                distance = results['distances'][0][0] if results['distances'] else 0.0
+                match_confidence = f"{max(0, round((1 - distance) * 100, 1))}%"
             else:
                 metrics = {"labor_hours": 2, "part_cost": 300, "rate_per_hour": 100}
                 matched_component = part
+                match_confidence = "Fallback Baseline"
 
             labor_cost = int(metrics["labor_hours"]) * int(metrics["rate_per_hour"])
             cost = int(metrics["part_cost"]) + labor_cost
@@ -149,6 +146,12 @@ class DamageAssessmentAgent:
                 "Replacement Part Cost": int(metrics["part_cost"]),
                 "Total Component Cost": cost
             })
+            
+            vector_logs.append({
+                "User Extracted Phrasing": part,
+                "Vector DB Best Match": matched_component.title(),
+                "Semantic Confidence": match_confidence
+            })
                 
         return {
             "claim_number": structured_claim["claim_number"],
@@ -158,7 +161,8 @@ class DamageAssessmentAgent:
             "damage_estimate": total_estimate,
             "total_labor_cost": total_labor,
             "total_parts_cost": total_parts_cost,
-            "breakdown": breakdown
+            "breakdown": breakdown,
+            "vector_logs": vector_logs
         }
 
 class SettlementCalculationAgent:
@@ -183,7 +187,7 @@ class SettlementCalculationAgent:
 # Streamlit Layout Configuration
 # -------------------------------------------------------------------
 st.set_page_config(page_title="Agentic Claims Processing", page_icon="🤖", layout="wide")
-st.title("🤖 Intelligent Claims Processing Platform (Vector DB Integrated)")
+st.title("🤖 Intelligent Claims Processing Platform")
 st.markdown("---")
 
 # Pre-configured demo examples
@@ -209,149 +213,4 @@ demo_templates = {
 # -------------------------------------------------------------------
 st.sidebar.header("🛠️ Workflow Control Panel")
 
-deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value=5000, value=500, step=100)
-approval_threshold = st.sidebar.slider("Human Escalation Threshold ($)", min_value=1000, max_value=10000, value=5000)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 Active Pipeline Rules")
-st.sidebar.metric(label="🔒 Target Deductible", value=f"${deductible_input}")
-st.sidebar.metric(label="🚀 Approval Max Limit", value=f"${approval_threshold}")
-
-# Initialize session state tracking so results persist across tab switches
-if "pipeline_run" not in st.session_state:
-    st.session_state.pipeline_run = False
-    st.session_state.assessment_data = None
-    st.session_state.final_output = None
-
-# -------------------------------------------------------------------
-# Logical Interface Division (Tabs)
-# -------------------------------------------------------------------
-tab1, tab2, tab3 = st.tabs([
-    "📥 1. Intake & Agent Execution", 
-    "⚖️ 2. Settlement & Integrity Audit", 
-    "📊 3. Analytics & Cost Matrix"
-])
-
-# --- TAB 1: INTAKE & LIVE EXECUTION ---
-with tab1:
-    col_left, col_right = st.columns([1, 1], gap="large")
-    
-    with col_left:
-        st.subheader("Claim Presentation Input")
-        selected_template = st.selectbox("🎯 Quick-Select Demo Scenarios:", list(demo_templates.keys()))
-        current_email_body = demo_templates[selected_template]
-        user_email = st.text_area("Email Body Input Field:", value=current_email_body, height=160)
-        execute_pipeline = st.button("Execute Multi-Agent Pipeline", type="primary", use_container_width=True)
-
-    with col_right:
-        st.subheader("Live Agent Execution Monitor")
-        status_box = st.container()
-        
-        if execute_pipeline:
-            fnol_agent = FNOLIntakeAgent()
-            damage_agent = DamageAssessmentAgent()
-            settlement_agent = SettlementCalculationAgent()
-            
-            # Step 1: FNOL Intake
-            p1 = st.status("🔄 [FNOL Intake] Reading narrative data...", expanded=False)
-            claim_data = fnol_agent.process(user_email)
-            time.sleep(0.5)
-            p1.update(label=f"✅ FNOL Completed ({claim_data['claim_number']})", state="complete")
-            
-            # Step 2: Damage Assessment
-            p2 = st.status("🔄 [Vector DB Search] Matching components against Vector Database...", expanded=False)
-            st.session_state.assessment_data = damage_agent.process(claim_data)
-            time.sleep(0.5)
-            p2.update(label="✅ Vector Semantic Parameters Extracted", state="complete")
-            
-            # Step 3: Calculation Engine
-            p3 = st.status("🔄 [Settlement Calculation] Assessing final payouts...", expanded=False)
-            st.session_state.final_output = settlement_agent.process(st.session_state.assessment_data, deductible_input)
-            time.sleep(0.5)
-            p3.update(label="✅ Risk & Integrity Audit Finalized", state="complete")
-            
-            st.session_state.pipeline_run = True
-            st.success("🎉 Multi-agent analysis completed! Check Tabs 2 and 3 for results.")
-        
-        elif not st.session_state.pipeline_run:
-            status_box.info("ℹ️ Press **'Execute Multi-Agent Pipeline'** to trigger data sequence analysis.")
-        else:
-            st.info("✅ Last run data cached. You can check the remaining tabs or re-run the pipeline above.")
-
-# --- TAB 2: SETTLEMENT & INTEGRITY AUDIT ---
-with tab2:
-    st.subheader("Final Settlement Assessment & Routing Logic")
-    
-    if st.session_state.pipeline_run:
-        final_output = st.session_state.final_output
-        assessment_data = st.session_state.assessment_data
-        
-        # Financial Metrics
-        m1, m2, m3 = st.columns(3)
-        m1.metric(label="Calculated Net Payout", value=f"${final_output['final_payout']}")
-        m2.metric(label="Calculation Confidence Score", value=f"{final_output['confidence_score'] * 100}%")
-        m3.info(f"**Calculated Deductible Applied:** ${final_output['deductible_applied']}")
-        
-        # AI Reasoning Statement
-        st.warning(f"💡 **Agent Calculation Reasoning:** {final_output['reasoning']}")
-        
-        # Guardrail System Logs
-        st.markdown("### 🛑 Automated Routing Guardrails")
-        if final_output['final_payout'] > approval_threshold:
-            st.error(f"⚠️ **Action Required**: Net payout (${final_output['final_payout']}) exceeds threshold limit of ${approval_threshold}. Claim routed to manual human review.")
-        elif final_output['confidence_score'] < 0.70:
-            st.error(f"⚠️ **Action Required**: Confidence score is below acceptable limits ({final_output['confidence_score'] * 100}%). Details are too vague; routing to manual human review.")
-        else:
-            st.success("✨ **Auto-Approved**: Claim settlement approved within standard automated parameters.")
-    else:
-        st.info("📥 Please run the execution pipeline in **Tab 1** to view settlement data.")
-
-# --- TAB 3: ANALYTICS & COST MATRIX ---
-with tab3:
-    st.subheader("Extracted Metadata Matrix & Financial Data Visualization")
-    
-    if st.session_state.pipeline_run:
-        assessment_data = st.session_state.assessment_data
-        
-        # Metadata Card Layout
-        c_meta1, c_meta2, c_meta3, c_meta4 = st.columns(4)
-        c_meta1.text_input("Extracted Policy Number", assessment_data["policy_number"], disabled=True)
-        c_meta2.text_input("Vehicle Associated", assessment_data["vehicle"], disabled=True)
-        c_meta3.text_input("Date of Accident", assessment_data["date_of_accident"], disabled=True)
-        c_meta4.text_input("Damage Estimate Gross", f"${assessment_data['damage_estimate']}", disabled=True)
-        
-        st.markdown("---")
-        
-        if assessment_data["breakdown"]:
-            df = pd.DataFrame(assessment_data["breakdown"])
-            
-            # Interactive Plotly Charts
-            st.markdown("#### Cost Allocation Visualizations")
-            chart_col1, chart_col2 = st.columns(2)
-            
-            with chart_col1:
-                # Ratio of Parts vs Labor
-                pie_data = pd.DataFrame({
-                    "Cost Type": ["Replacement Part Cost", "Total Labor Cost"],
-                    "Total USD ($)": [assessment_data["total_parts_cost"], assessment_data["total_labor_cost"]]
-                })
-                fig_pie = px.pie(pie_data, values="Total USD ($)", names="Cost Type", 
-                                 title="Cost Distribution Ratio (Parts vs Labor)",
-                                 color_discrete_sequence=px.colors.sequential.RdBu)
-                st.plotly_chart(fig_pie, use_container_width=True)
-                
-            with chart_col2:
-                # Stacked Price Breakdown per Component
-                fig_bar = px.bar(df, x="Damaged Component", y="Total Component Cost",
-                                 text_auto='.2s', title="Total Cost Stacked by Component",
-                                 labels={"Total Component Cost": "Cost ($)"},
-                                 color_discrete_sequence=["#1f77b4"])
-                st.plotly_chart(fig_bar, use_container_width=True)
-
-            # Data Table
-            st.markdown("#### Detailed Pricing Audit Grid")
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        else:
-            st.warning("⚠️ No specific damaged components recognized by the database; dynamic charting skipped.")
-    else:
-        st.info("📥 Please run the execution pipeline in **Tab 1** to generate metrics and charts.")
+deductible_input = st.sidebar.number_input("Policy Deductible ($)", min_value=0, max_value
