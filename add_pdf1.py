@@ -355,7 +355,7 @@ with tab2:
         
         st.markdown("### 🛑 Automated Routing Guardrails")
         if final_output['final_payout'] > approval_threshold:
-            st.error(f"⚠️ **Action Required**: Net payout (${final_output['final_payout']}) exceeds threshold limit of${approval_threshold}. Claim routed to manual human review.")
+            st.error(f"⚠️ **Action Required**: Net payout (${final_output['final_payout']}) exceeds threshold limit of ${approval_threshold}. Claim routed to manual human review.")
         elif not assessment_data["breakdown"]:
             st.error(f"⚠️ **Action Required**: Confidence score is below acceptable limits. Details are too vague; routing to manual human review.")
         else:
@@ -373,4 +373,24 @@ with tab3:
         c_meta1.text_input("Resolved Vehicle Make/Model", assessment_data["vehicle"], disabled=True)
         c_meta2.text_input("Extracted Policy Number", assessment_data["policy_number"], disabled=True)
         c_meta3.text_input("Date of Accident", assessment_data["date_of_accident"], disabled=True)
-        c_meta4.text_input("Damage
+        c_meta4.text_input("Damage Estimate Gross", f"${assessment_data['damage_estimate']}", disabled=True)
+        
+        st.markdown("---")
+        if assessment_data["breakdown"]:
+            df = pd.DataFrame(assessment_data["breakdown"])
+            chart_col1, chart_col2 = st.columns(2)
+            with chart_col1:
+                pie_data = pd.DataFrame({
+                    "Cost Type": ["Replacement Part Cost", "Total Labor Cost"],
+                    "Total USD ($)": [assessment_data["total_parts_cost"], assessment_data["total_labor_cost"]]
+                })
+                fig_pie = px.pie(pie_data, values="Total USD ($)", names="Cost Type", title="Cost Distribution Ratio", color_discrete_sequence=px.colors.sequential.RdBu)
+                st.plotly_chart(fig_pie, width="stretch")
+            with chart_col2:
+                fig_bar = px.bar(df, x="Damaged Component", y="Total Component Cost", text_auto='.2s', title="Total Cost Stacked by Component")
+                st.plotly_chart(fig_bar, width="stretch")
+            st.dataframe(df, width="stretch", hide_index=True)
+        else:
+            st.warning("⚠️ No components map cleanly to pricing catalogs. Multi-layered graphs skipped.")
+    else:
+        st.info("📥 Please run the execution pipeline in **Tab 1** to generate metrics.")
