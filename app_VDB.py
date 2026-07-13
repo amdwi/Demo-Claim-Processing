@@ -1,20 +1,3 @@
-Looking closely at the very end of your deployment log, the compiler hit a structural syntax bug inside the demo scenarios dictionary layout.
-
-You accidentally used a **semicolon (`;`)** instead of a **colon (`:`)** right after the dictionary key string on line 221, which crashed the app parsing sequence:
-
-```python
-"🔴 Human Review 1: Exceeds Threshold (Porsche Typo)";  # <--- CRASHED HERE (Semicolon error)
-    "Urgent claim for policy POL-5544219..."
-
-```
-
----
-
-### 🔧 The Complete Fixed Script
-
-Here is the fully sanitized, production-ready script. It fixes that dictionary typo, cleans up all code indentation variations, and changes `use_container_width=True` to `width='stretch'` to satisfy the modern Streamlit core engine updates highlighted in your console log.
-
-```python
 import streamlit as st
 import time
 import pandas as pd
@@ -279,7 +262,7 @@ with tab1:
         st.subheader("Claim Presentation Input")
         selected_template = st.selectbox("🎯 Quick-Select Demo Scenarios:", list(demo_templates.keys()))
         current_email_body = demo_templates[selected_template]
-        user_email = text_area_field = st.text_area("Email Body Input Field:", value=current_email_body, height=160)
+        user_email = st.text_area("Email Body Input Field:", value=current_email_body, height=160)
         execute_pipeline = st.button("Execute Multi-Agent Pipeline", type="primary", width="stretch")
 
     with col_right:
@@ -381,5 +364,3 @@ with tab3:
             st.warning("⚠️ No components map cleanly to pricing catalogs. Multi-layered graphs skipped.")
     else:
         st.info("📥 Please run the execution pipeline in **Tab 1** to generate metrics.")
-
-```
