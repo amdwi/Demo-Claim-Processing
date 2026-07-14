@@ -51,11 +51,13 @@ def extract_entities_via_groq(text, api_key):
         \"\"\"{text}\"\"\"
         """
         
-        completion = client.chat.completions.create(
-            model="llama3-8b-8192",  # Fast, highly accurate open-weights model
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,         # Zero temperature ensures consistent deterministic extractions
-            response_format={"type": "json_object"}
+        # UPDATED FIXED CODE
+    completion = client.chat.completions.create(
+    model="openai/gpt-oss-20b",  # Updated to a highly efficient supported model
+    messages=[{"role": "user", "content": prompt}],
+    temperature=0.0,
+    response_format={"type": "json_object"}
+)
         )
         
         # Cleanly parse the JSON token stream directly into python dictionaries
