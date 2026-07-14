@@ -19,7 +19,6 @@ def extract_entities_via_groq(text, api_key):
     natively dealing with typos and complex structuring without hardcoded keywords.
     """
     if not api_key:
-        # Graceful fallback placeholder if no API key is provided yet
         return {
             "policy_number": "POL-ERR-NOKEY",
             "raw_extracted_vehicle": "Missing Groq API Key",
@@ -29,7 +28,6 @@ def extract_entities_via_groq(text, api_key):
     try:
         client = Groq(api_key=api_key)
         
-        # We enforce a strict structural JSON output schema from the LLM
         prompt = f"""
         You are an advanced enterprise insurance intake AI system. Analyze the unstructured claims document or email text below.
         
@@ -51,16 +49,13 @@ def extract_entities_via_groq(text, api_key):
         \"\"\"{text}\"\"\"
         """
         
-        # UPDATED FIXED CODE
-    completion = client.chat.completions.create(
-    model="openai/gpt-oss-20b",  # Updated to a highly efficient supported model
-    messages=[{"role": "user", "content": prompt}],
-    temperature=0.0,
-    response_format={"type": "json_object"}
-)
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",  # Updated production supported model
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,         
+            response_format={"type": "json_object"}
         )
         
-        # Cleanly parse the JSON token stream directly into python dictionaries
         structured_response = json.loads(completion.choices[0].message.content)
         return structured_response
         
@@ -71,7 +66,6 @@ def extract_entities_via_groq(text, api_key):
             "raw_extracted_vehicle": "Extraction Timeout/Failure",
             "damaged_parts": []
         }
-
 # -------------------------------------------------------------------
 # Agentic Workflow Components
 # -------------------------------------------------------------------
