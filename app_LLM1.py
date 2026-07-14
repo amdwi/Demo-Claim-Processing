@@ -81,6 +81,7 @@ class FNOLIntakeAgent:
 
 class DamageAssessmentAgent:
     def __init__(self):
+        # Initialize free in-memory local Vector Database
         self.chroma_client = chromadb.Client()
         self.vehicle_collection = self.chroma_client.get_or_create_collection(name="vehicle_directory")
         self.parts_collection = self.chroma_client.get_or_create_collection(name="parts_catalog")
@@ -244,7 +245,6 @@ st.sidebar.markdown("### 📊 Active Pipeline Rules")
 st.sidebar.metric(label="🔒 Target Deductible", value=f"${deductible_input}")
 st.sidebar.metric(label="🚀 Approval Max Limit", value=f"${approval_threshold}")
 
-# Track metrics globally to ensure persistence across window paints
 if "pipeline_run" not in st.session_state:
     st.session_state.pipeline_run = False
     st.session_state.assessment_data = None
@@ -303,7 +303,6 @@ with tab1:
             if not groq_api_key:
                 st.error("🛑 Action Required: Please provide a valid Groq API Key in the sidebar control panel to trigger the real LLM engine extraction.")
             elif final_processing_text.strip():
-                # Store the raw ingestion point for client effectiveness audit
                 st.session_state.last_llm_input = final_processing_text
                 
                 fnol_agent = FNOLIntakeAgent(api_key=groq_api_key)
@@ -313,22 +312,26 @@ with tab1:
                 p1 = st.status("🔄 [Groq LLM Engine] Processing Narrative Intake Data...", expanded=True)
                 claim_data = fnol_agent.process(final_processing_text)
                 
-                # Cache structural tokens concluded by the LLM
                 st.session_state.last_llm_output = {
                     "Extracted Policy": claim_data.get("policy_number"),
                     "Extracted Raw Vehicle Description": claim_data.get("raw_extracted_vehicle"),
                     "Extracted Raw Parts List": claim_data.get("damaged_parts")
                 }
                 
-                # ---> LIVE AUDIT SECTION: INPUT VS CONCLUSION <---
+                # --- ADJUSTED UI: SCROLLABLE TEXT WINDOW + COLLAPSIBLE JSON CONTAINER ---
                 st.markdown("### 📊 Live LLM Effectiveness Audit")
                 c_in, c_out = st.columns(2)
                 with c_in:
-                    st.info("📝 **What the LLM Read (Raw Input):**")
-                    st.caption(st.session_state.last_llm_input)
+                    st.text_area(
+                        "📝 What the LLM Read (Raw Input):",
+                        value=st.session_state.last_llm_input,
+                        height=140,
+                        disabled=True,
+                        key="live_audit_raw_input"
+                    )
                 with c_out:
-                    st.success("🧠 **What the LLM Concluded (Structured Data):**")
-                    st.json(st.session_state.last_llm_output)
+                    with st.expander("🧠 View LLM Conclusion (Structured JSON)", expanded=True):
+                        st.json(st.session_state.last_llm_output)
                 
                 time.sleep(0.2)
                 p1.update(label=f"✅ Groq LLM Ingestion Finalized ({claim_data['claim_number']})", state="complete")
@@ -358,15 +361,20 @@ with tab1:
         elif st.session_state.pipeline_run:
             st.info("✅ Last run data cached.")
             
-            # Persist Audit Cards on tab switching
+            # --- PERSISTENT CACHED AUDIT VIEWS ---
             st.markdown("### 📊 Cached LLM Effectiveness Audit")
             c_in, c_out = st.columns(2)
             with c_in:
-                st.info("📝 **What the LLM Read (Raw Input):**")
-                st.caption(st.session_state.last_llm_input)
+                st.text_area(
+                    "📝 What the LLM Read (Raw Input):",
+                    value=st.session_state.last_llm_input,
+                    height=140,
+                    disabled=True,
+                    key="cached_audit_raw_input"
+                )
             with c_out:
-                st.success("🧠 **What the LLM Concluded (Structured Data):**")
-                st.json(st.session_state.last_llm_output)
+                with st.expander("🧠 View LLM Conclusion (Structured JSON)", expanded=True):
+                    st.json(st.session_state.last_llm_output)
                 
             st.markdown("---")
             if st.session_state.assessment_data and st.session_state.assessment_data.get("vector_logs"):
@@ -376,7 +384,7 @@ with tab1:
                     width="stretch", hide_index=True
                 )
         else:
-            st.info("ℹ             Enter your Groq Key in the sidebar, select a scenario, and press **'Execute Multi-Agent Pipeline'**.")
+            st.info("ℹ️ Enter your Groq Key in the sidebar, select a scenario, and press **'Execute Multi-Agent Pipeline'**.")
 
 # --- TAB 2: SETTLEMENT & INTEGRITY AUDIT ---
 with tab2:
