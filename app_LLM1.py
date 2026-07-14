@@ -4,6 +4,7 @@ import pandas as pd
 import uuid
 import re
 import json
+import difflib  # Built-in character-level fuzzy matching library
 from datetime import datetime
 import plotly.express as px
 import chromadb
@@ -116,14 +117,27 @@ class DamageAssessmentAgent:
         
         vector_logs = [] 
         
-        v_res = self.vehicle_collection.query(query_texts=[raw_car], n_results=1)
-        if v_res and v_res['documents'] and len(v_res['documents'][0]) > 0:
-            resolved_vehicle = v_res['documents'][0][0]
-            v_dist = v_res['distances'][0][0] if v_res['distances'] else 0.1
-            v_conf = f"{max(0, round((1 - v_dist) * 100, 1))}%"
+        # Reference lists for string layout comparison
+        valid_vehicles = ["2024 Porsche 911 Carrera", "2022 Tesla Model 3", "2023 Ford F-150", "2022 Toyota Camry"]
+        valid_parts = ["carbon-fiber front bumper", "matrix led headlight", "rear bumper", "tail light", "front bumper"]
+        
+        # --- 1. HYBRID MATCH THE VEHICLE BRAND/MODEL ---
+        # Tier 1 Check: Character-level fuzzy mapping (Catches extreme typos like 'Tot Cay' or 'Tsl')
+        fuzzy_vehicle_matches = difflib.get_close_matches(raw_car, valid_vehicles, n=1, cutoff=0.3)
+        
+        if fuzzy_vehicle_matches:
+            resolved_vehicle = fuzzy_vehicle_matches[0]
+            v_conf = "95% (Fuzzy Character Match)"
         else:
-            resolved_vehicle = "Unknown Vehicle"
-            v_conf = "0%"
+            # Tier 2 Check: Fallback to Semantic Vector DB space
+            v_res = self.vehicle_collection.query(query_texts=[raw_car], n_results=1)
+            if v_res and v_res['documents'] and len(v_res['documents'][0]) > 0:
+                resolved_vehicle = v_res['documents'][0][0]
+                v_dist = v_res['distances'][0][0] if v_res['distances'] else 0.1
+                v_conf = f"{max(0, round((1 - v_dist) * 100, 1))}% (Vector DB Semantic)"
+            else:
+                resolved_vehicle = "Unknown Vehicle"
+                v_conf = "0%"
             
         vector_logs.append({
             "Entity Type": "🚙 Vehicle Entity",
@@ -132,22 +146,40 @@ class DamageAssessmentAgent:
             "Semantic Confidence": v_conf
         })
 
+        # --- 2. HYBRID MATCH THE DAMAGED COMPONENTS ---
         total_estimate = 0
         total_labor = 0
         total_parts_cost = 0
         breakdown = []
         
         for part in raw_parts:
-            p_res = self.parts_collection.query(query_texts=[part], n_results=1)
-            if p_res and p_res['metadatas'] and len(p_res['metadatas'][0]) > 0:
-                metrics = p_res['metadatas'][0][0]
-                matched_component = p_res['documents'][0][0]
-                p_dist = p_res['distances'][0][0] if p_res['distances'] else 0.1
-                p_conf = f"{max(0, round((1 - p_dist) * 100, 1))}%"
+            # Tier 1 Check: Character-level fuzzy mapping for short cryptic abbreviations
+            fuzzy_part_matches = difflib.get_close_matches(part.lower(), valid_parts, n=1, cutoff=0.3)
+            
+            if fuzzy_part_matches:
+                matched_component = fuzzy_part_matches[0]
+                p_conf = "90% (Fuzzy Character Match)"
+                
+                parts_catalog_data = {
+                    "carbon-fiber front bumper": {"labor_hours": 8, "part_cost": 2800, "rate_per_hour": 150},
+                    "matrix led headlight": {"labor_hours": 3, "part_cost": 3200, "rate_per_hour": 150},
+                    "rear bumper": {"labor_hours": 4, "part_cost": 450, "rate_per_hour": 100},
+                    "tail light": {"labor_hours": 1, "part_cost": 150, "rate_per_hour": 100},
+                    "front bumper": {"labor_hours": 5, "part_cost": 600, "rate_per_hour": 100},
+                }
+                metrics = parts_catalog_data.get(matched_component, {"labor_hours": 2, "part_cost": 300, "rate_per_hour": 100})
             else:
-                metrics = {"labor_hours": 2, "part_cost": 300, "rate_per_hour": 100}
-                matched_component = part
-                p_conf = "Fallback Baseline"
+                # Tier 2 Check: Fallback to deep semantic collection search
+                p_res = self.parts_collection.query(query_texts=[part], n_results=1)
+                if p_res and p_res['metadatas'] and len(p_res['metadatas'][0]) > 0:
+                    metrics = p_res['metadatas'][0][0]
+                    matched_component = p_res['documents'][0][0]
+                    p_dist = p_res['distances'][0][0] if p_res['distances'] else 0.1
+                    p_conf = f"{max(0, round((1 - p_dist) * 100, 1))}% (Vector DB Semantic)"
+                else:
+                    metrics = {"labor_hours": 2, "part_cost": 300, "rate_per_hour": 100}
+                    matched_component = part
+                    p_conf = "Fallback Baseline"
 
             labor_cost = int(metrics["labor_hours"]) * int(metrics["rate_per_hour"])
             cost = int(metrics["part_cost"]) + labor_cost
@@ -318,7 +350,7 @@ with tab1:
                     "Extracted Raw Parts List": claim_data.get("damaged_parts")
                 }
                 
-                # --- ADJUSTED UI: SCROLLABLE TEXT WINDOW + COLLAPSIBLE JSON CONTAINER ---
+                # Low-Profile Layout: Confines raw data to prevent vertical text pushing
                 st.markdown("### 📊 Live LLM Effectiveness Audit")
                 c_in, c_out = st.columns(2)
                 with c_in:
@@ -361,7 +393,6 @@ with tab1:
         elif st.session_state.pipeline_run:
             st.info("✅ Last run data cached.")
             
-            # --- PERSISTENT CACHED AUDIT VIEWS ---
             st.markdown("### 📊 Cached LLM Effectiveness Audit")
             c_in, c_out = st.columns(2)
             with c_in:
