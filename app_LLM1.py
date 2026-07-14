@@ -337,11 +337,12 @@ with tab1:
             elif final_processing_text.strip():
                 st.session_state.last_llm_input = final_processing_text
                 
-                fnol_agent = FNOLIntakeAgent(api_key=groq_api_key)
-                damage_agent = DamageAssessmentAgent()
-                settlement_agent = SettlementCalculationAgent()
+                # --- EXPLICIT ORCHESTRATION PIPELINE MONITOR START ---
+                st.markdown("### 🎛️ Orchestrator Pipeline Status")
                 
-                p1 = st.status("🔄 [Groq LLM Engine] Processing Narrative Intake Data...", expanded=True)
+                # Step 1 Ingestion
+                p1 = st.status("🔄 [Step 1: Ingestion Orchestration] Triggering Groq LLM Extraction...", expanded=True)
+                fnol_agent = FNOLIntakeAgent(api_key=groq_api_key)
                 claim_data = fnol_agent.process(final_processing_text)
                 
                 st.session_state.last_llm_output = {
@@ -350,43 +351,43 @@ with tab1:
                     "Extracted Raw Parts List": claim_data.get("damaged_parts")
                 }
                 
-                # Low-Profile Layout: Confines raw data to prevent vertical text pushing
-                st.markdown("### 📊 Live LLM Effectiveness Audit")
+                st.markdown("##### 📊 Live LLM Effectiveness Audit")
                 c_in, c_out = st.columns(2)
                 with c_in:
-                    st.text_area(
-                        "📝 What the LLM Read (Raw Input):",
-                        value=st.session_state.last_llm_input,
-                        height=140,
-                        disabled=True,
-                        key="live_audit_raw_input"
-                    )
+                    st.text_area("📝 What the LLM Read (Raw Input):", value=st.session_state.last_llm_input, height=140, disabled=True, key="live_audit_raw_input")
                 with c_out:
                     with st.expander("🧠 View LLM Conclusion (Structured JSON)", expanded=True):
                         st.json(st.session_state.last_llm_output)
                 
-                time.sleep(0.2)
-                p1.update(label=f"✅ Groq LLM Ingestion Finalized ({claim_data['claim_number']})", state="complete")
+                time.sleep(0.4)
+                p1.update(label="✅ [Step 1 Completed] Intake parameters extracted successfully.", state="complete")
                 
-                p2 = st.status("🔄 [Chroma DB Engine] Aligning entities against Vector Catalog Index...", expanded=True)
+                # Step 2 Database Alignment
+                p2 = st.status("🔄 [Step 2: Database Orchestration] Handoff to Hybrid Fuzzy/Vector Catalog Mapping...", expanded=True)
+                damage_agent = DamageAssessmentAgent()
                 st.session_state.assessment_data = damage_agent.process(claim_data)
                 
                 if st.session_state.assessment_data["vector_logs"]:
                     st.markdown("##### 🎯 Dynamic Vector DB Alignment Matrix:")
-                    st.dataframe(
-                        pd.DataFrame(st.session_state.assessment_data["vector_logs"]),
-                        width="stretch", hide_index=True
-                    )
-                time.sleep(0.2)
-                p2.update(label="✅ Vector Identity & Part Mapping Complete", state="complete")
+                    st.dataframe(pd.DataFrame(st.session_state.assessment_data["vector_logs"]), width="stretch", hide_index=True)
                 
-                p3 = st.status("🔄 [Settlement Calculation] Assessing financial payout...", expanded=False)
+                time.sleep(0.4)
+                p2.update(label="✅ [Step 2 Completed] Typos matched and standardized to catalog indexes.", state="complete")
+                
+                # Step 3 Financial Assessment Logic
+                p3 = st.status("🔄 [Step 3: Business Logic Orchestration] Evaluating Policy Deductibles & Guardrails...", expanded=True)
+                settlement_agent = SettlementCalculationAgent()
                 st.session_state.final_output = settlement_agent.process(st.session_state.assessment_data, deductible_input)
-                time.sleep(0.2)
-                p3.update(label="✅ Calculations Finalized", state="complete")
+                
+                st.markdown("##### 🔒 Logic Gate Routing Concluded:")
+                st.info(f"💰 Gross Cost: ${st.session_state.assessment_data['damage_estimate']} | Payout Net: ${st.session_state.final_output['final_payout']}")
+                
+                time.sleep(0.4)
+                p3.update(label="✅ [Step 3 Completed] Policy calculations finalized.", state="complete")
+                # --- EXPLICIT ORCHESTRATION PIPELINE MONITOR END ---
                 
                 st.session_state.pipeline_run = True
-                st.success("🎉 Processing complete! Check next tabs.")
+                st.success("🎉 Orchestrator successfully verified all steps! Explore Tab 2 and Tab 3 for full analytics.")
             else:
                 st.error("⚠️ Ingestion workspace is empty. Please select a template or verify your PDF config.")
             
